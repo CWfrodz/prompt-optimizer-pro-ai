@@ -1,7 +1,40 @@
-const { app, BrowserWindow, Tray, Menu, globalShortcut } = require('electron');
+const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain } = require('electron');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
+
+// Шлях для надійного збереження файлу налаштувань
+const storePath = path.join(app.getPath('userData'), 'prompt-optimizer-db.json');
+
+// IPC Обробники для читання/запису
+ipcMain.on('get-data-sync', (event, key) => {
+  try {
+    if (fs.existsSync(storePath)) {
+      const data = JSON.parse(fs.readFileSync(storePath, 'utf8'));
+      event.returnValue = data[key] !== undefined ? data[key] : null;
+      return;
+    }
+  } catch (e) {
+    console.error(e);
+  }
+  event.returnValue = null;
+});
+
+ipcMain.on('save-data-sync', (event, key, value) => {
+  try {
+    let data = {};
+    if (fs.existsSync(storePath)) {
+      data = JSON.parse(fs.readFileSync(storePath, 'utf8'));
+    }
+    data[key] = value;
+    fs.writeFileSync(storePath, JSON.stringify(data, null, 2), 'utf8');
+    event.returnValue = true;
+  } catch (e) {
+    console.error(e);
+    event.returnValue = false;
+  }
+});
+
 
 let tray = null;
 let window = null;
@@ -66,7 +99,8 @@ async function createWindow() {
     skipTaskbar: true, // Сховати з панелі задач (бо це трей-програма)
     webPreferences: {
       nodeIntegration: true,
-      contextIsolation: false,
+      contextIsolation: true, // Вмикаємо ізоляцію для preload.js
+      preload: path.join(__dirname, 'preload.js'), // Підключаємо наш безпечний API
       webSecurity: false // ВАЖЛИВО! Відключає CORS для запитів до локальних LLM
     },
   });

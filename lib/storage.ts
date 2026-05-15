@@ -19,9 +19,36 @@ const STORAGE_KEY_HISTORY = "prompt_optimizer_history";
 const STORAGE_KEY_SELECTED_MODEL = "prompt_optimizer_selected_model";
 const STORAGE_KEY_USER_CONTEXT = "prompt_optimizer_user_context";
 
+function getSavedData(key: string): string | null {
+  if (typeof window === 'undefined') return null;
+  // Використовуємо надійне збереження через electronAPI
+  if ((window as any).electronAPI) {
+    try {
+      const val = (window as any).electronAPI.getStoredData(key);
+      if (val !== null) return val;
+    } catch (e) {
+      console.error("Помилка читання файлу:", e);
+    }
+  }
+  return localStorage.getItem(key);
+}
+
+function saveData(key: string, value: string) {
+  if (typeof window !== 'undefined') {
+    if ((window as any).electronAPI) {
+      try {
+        (window as any).electronAPI.saveStoredData(key, value);
+      } catch (e) {
+        console.error("Помилка запису файлу:", e);
+      }
+    }
+    localStorage.setItem(key, value);
+  }
+}
+
 export function getStoredModels(): CustomModel[] {
   if (typeof window === "undefined") return [];
-  const stored = localStorage.getItem(STORAGE_KEY_MODELS);
+  const stored = getSavedData(STORAGE_KEY_MODELS);
   if (!stored) {
     // Default mock local model config
     return [{
@@ -31,45 +58,43 @@ export function getStoredModels(): CustomModel[] {
       modelId: "local-model"
     }];
   }
-  return JSON.parse(stored);
-}
-
-export function saveModels(models: CustomModel[]) {
-  if (typeof window !== "undefined") {
-    localStorage.setItem(STORAGE_KEY_MODELS, JSON.stringify(models));
+  try {
+    return JSON.parse(stored);
+  } catch (e) {
+    return [{
+      id: "default-local",
+      name: "Local LM Studio / Ollama",
+      endpointUrl: "http://localhost:1234/v1/chat/completions",
+      modelId: "local-model"
+    }];
   }
 }
 
+export function saveModels(models: CustomModel[]) {
+  saveData(STORAGE_KEY_MODELS, JSON.stringify(models));
+}
+
 export function getStoredHistory(): HistoryItem[] {
-  if (typeof window === "undefined") return [];
-  const stored = localStorage.getItem(STORAGE_KEY_HISTORY);
+  const stored = getSavedData(STORAGE_KEY_HISTORY);
   return stored ? JSON.parse(stored) : [];
 }
 
 export function saveHistory(history: HistoryItem[]) {
-  if (typeof window !== "undefined") {
-    localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(history));
-  }
+  saveData(STORAGE_KEY_HISTORY, JSON.stringify(history));
 }
 
 export function getSelectedModelId(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(STORAGE_KEY_SELECTED_MODEL);
+  return getSavedData(STORAGE_KEY_SELECTED_MODEL);
 }
 
 export function saveSelectedModelId(id: string) {
-  if (typeof window !== "undefined") {
-    localStorage.setItem(STORAGE_KEY_SELECTED_MODEL, id);
-  }
+  saveData(STORAGE_KEY_SELECTED_MODEL, id);
 }
 
 export function getUserContext(): string {
-  if (typeof window === "undefined") return "";
-  return localStorage.getItem(STORAGE_KEY_USER_CONTEXT) || "";
+  return getSavedData(STORAGE_KEY_USER_CONTEXT) || "";
 }
 
 export function saveUserContext(context: string) {
-  if (typeof window !== "undefined") {
-    localStorage.setItem(STORAGE_KEY_USER_CONTEXT, context);
-  }
+  saveData(STORAGE_KEY_USER_CONTEXT, context);
 }
