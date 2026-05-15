@@ -26,6 +26,8 @@ import {
   saveSelectedModelId,
   getUserContext,
   saveUserContext,
+  getSaveHistoryEnabled,
+  setSaveHistoryEnabled,
 } from "@/lib/storage";
 
 export default function PromptOptimizerTrayApp() {
@@ -33,7 +35,7 @@ export default function PromptOptimizerTrayApp() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [selectedModelId, setSelectedModelId] = useState<string>("");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [activeSettingsTab, setActiveSettingsTab] = useState<"models" | "memory">("models");
+  const [activeSettingsTab, setActiveSettingsTab] = useState<"models" | "memory" | "history">("models");
 
   // Widget state
   const [rawPrompt, setRawPrompt] = useState("");
@@ -46,6 +48,8 @@ export default function PromptOptimizerTrayApp() {
   // Settings Draft State
   const [draftModels, setDraftModels] = useState<CustomModel[]>([]);
   const [draftUserContext, setDraftUserContext] = useState("");
+  const [saveHistoryEnabledState, setSaveHistoryEnabledState] = useState(true);
+  const [draftSaveHistoryEnabled, setDraftSaveHistoryEnabled] = useState(true);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -56,9 +60,11 @@ export default function PromptOptimizerTrayApp() {
       const h = getStoredHistory();
       const sid = getSelectedModelId();
       const ctx = getUserContext();
+      const saveHist = getSaveHistoryEnabled();
       setModels(m);
       setHistory(h);
       setUserContext(ctx);
+      setSaveHistoryEnabledState(saveHist);
       if (sid && m.find((mod) => mod.id === sid)) {
         setSelectedModelId(sid);
       } else if (m.length > 0) {
@@ -102,7 +108,7 @@ export default function PromptOptimizerTrayApp() {
         headers["Authorization"] = `Bearer ${modelToRun.apiKey}`;
       }
 
-      let requestBody = {
+      let requestBody: any = {
         model: modelToRun.modelId || "local",
         messages: [
           { role: "system", "content": systemInstruction },
@@ -110,6 +116,15 @@ export default function PromptOptimizerTrayApp() {
         ],
         temperature: 0.7,
       };
+
+      // Підтримка формату Manifest Router (/v1/responses)
+      if (modelToRun.endpointUrl.endsWith("/v1/responses")) {
+        requestBody = {
+          model: modelToRun.modelId || "auto",
+          input: `${systemInstruction}\n\nОптимізуй наступний промпт, використовуючи правила вище:\n\n${rawPrompt}`,
+          store: false
+        };
+      }
 
       let res;
       try {
@@ -148,22 +163,36 @@ export default function PromptOptimizerTrayApp() {
       let responseText = "";
       if (data.choices && data.choices[0] && data.choices[0].message) {
         responseText = data.choices[0].message.content;
+      } else if (typeof data.text === 'string') {
+        responseText = data.text;
+      } else if (typeof data.output === 'string') {
+        responseText = data.output;
+      } else if (typeof data.response === 'string') {
+        responseText = data.response;
+      } else if (data.output && typeof data.output === 'object' && typeof data.output.text === 'string') {
+        responseText = data.output.text;
       } else {
         responseText = JSON.stringify(data, null, 2);
+      }
+
+      if (typeof responseText !== 'string') {
+        responseText = JSON.stringify(responseText, null, 2);
       }
 
       setOptimizedPrompt(responseText);
 
       // Save to history
-      const newHistoryItem: HistoryItem = {
-        id: Date.now().toString(),
-        originalPrompt: rawPrompt,
-        optimizedPrompt: responseText,
-        timestamp: Date.now(),
-      };
-      const newHistory = [newHistoryItem, ...history].slice(0, 50); // Keep last 50
-      setHistory(newHistory);
-      saveHistory(newHistory);
+      if (saveHistoryEnabledState) {
+        const newHistoryItem: HistoryItem = {
+          id: Date.now().toString(),
+          originalPrompt: rawPrompt,
+          optimizedPrompt: responseText,
+          timestamp: Date.now(),
+        };
+        const newHistory = [newHistoryItem, ...history].slice(0, 50); // Keep last 50
+        setHistory(newHistory);
+        saveHistory(newHistory);
+      }
       
     } catch (err: any) {
       console.error(err);
@@ -205,6 +234,7 @@ export default function PromptOptimizerTrayApp() {
   const openSettings = () => {
     setDraftModels([...models]);
     setDraftUserContext(userContext);
+    setDraftSaveHistoryEnabled(saveHistoryEnabledState);
     setIsSettingsOpen(true);
   };
 
@@ -213,6 +243,8 @@ export default function PromptOptimizerTrayApp() {
     saveModels(draftModels);
     setUserContext(draftUserContext);
     saveUserContext(draftUserContext);
+    setSaveHistoryEnabledState(draftSaveHistoryEnabled);
+    setSaveHistoryEnabled(draftSaveHistoryEnabled);
     if (!draftModels.find((m) => m.id === selectedModelId) && draftModels.length > 0) {
       const newSid = draftModels[0].id;
       setSelectedModelId(newSid);
@@ -361,6 +393,12 @@ export default function PromptOptimizerTrayApp() {
                 >
                   Пам&apos;ять / Контекст
                 </button>
+                <button 
+                  onClick={() => setActiveSettingsTab("history")}
+                  className={`text-sm font-bold ${activeSettingsTab === "history" ? "text-indigo-600 border-b-2 border-indigo-600 pb-1" : "text-slate-500 hover:text-slate-700 pb-1"}`}
+                >
+                  Історія
+                </button>
               </div>
               <button onClick={() => setIsSettingsOpen(false)} className="text-slate-400 hover:text-slate-600 mb-1">
                 &times;
@@ -436,7 +474,7 @@ export default function PromptOptimizerTrayApp() {
                     Додати Модель
                   </button>
                 </>
-              ) : (
+              ) : activeSettingsTab === "memory" ? (
                 <div className="space-y-4">
                   <div className="bg-emerald-50 text-emerald-800 p-3 rounded-lg text-sm mb-4 border border-emerald-100">
                     <strong>Глобальний Контекст:</strong> Тут ви можете вказати свою роль, інструменти, якими користуєтесь, або стиль (наприклад: &quot;Пиши коротко, я розробник на React&quot;). Цей контекст буде застосовуватись до <strong>кожного</strong> вашого промпта під час оптимізації.
@@ -451,7 +489,31 @@ export default function PromptOptimizerTrayApp() {
                     />
                   </div>
                 </div>
-              )}
+              ) : activeSettingsTab === "history" ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-4 bg-white border border-slate-200 rounded-lg">
+                    <div>
+                      <h4 className="font-semibold text-slate-800 text-sm">Зберігати історію запитів</h4>
+                      <p className="text-xs text-slate-500 mt-1">Записувати ваші оригінальні та оптимізовані промпти щоб ви могли їх переглянути пізніше.</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input type="checkbox" className="sr-only peer" checked={draftSaveHistoryEnabled} onChange={(e) => setDraftSaveHistoryEnabled(e.target.checked)} />
+                      <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                    </label>
+                  </div>
+                  <button 
+                    onClick={() => {
+                        if (confirm("Ви впевнені, що хочете очистити всю історію запитів?")) {
+                            setHistory([]);
+                            saveHistory([]);
+                        }
+                    }}
+                    className="w-full py-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-md text-sm font-medium transition-colors"
+                  >
+                    Очистити існуючу історію
+                  </button>
+                </div>
+              ) : null}
             </div>
 
             <div className="p-4 border-t border-slate-200 bg-white flex justify-end gap-3">

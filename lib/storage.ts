@@ -18,6 +18,7 @@ const STORAGE_KEY_MODELS = "prompt_optimizer_models";
 const STORAGE_KEY_HISTORY = "prompt_optimizer_history";
 const STORAGE_KEY_SELECTED_MODEL = "prompt_optimizer_selected_model";
 const STORAGE_KEY_USER_CONTEXT = "prompt_optimizer_user_context";
+const STORAGE_KEY_SAVE_HISTORY = "prompt_optimizer_save_history";
 
 function getSavedData(key: string): string | null {
   if (typeof window === 'undefined') return null;
@@ -97,4 +98,13 @@ export function getUserContext(): string {
 
 export function saveUserContext(context: string) {
   saveData(STORAGE_KEY_USER_CONTEXT, context);
+}
+
+export function getSaveHistoryEnabled(): boolean {
+  const stored = getSavedData(STORAGE_KEY_SAVE_HISTORY);
+  return stored !== "false"; // default is true
+}
+
+export function setSaveHistoryEnabled(enabled: boolean) {
+  saveData(STORAGE_KEY_SAVE_HISTORY, enabled ? "true" : "false");
 }
