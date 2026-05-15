@@ -4,7 +4,11 @@ const http = require('http');
 const fs = require('fs');
 
 // Шлях для надійного збереження файлу налаштувань
-const storePath = path.join(app.getPath('userData'), 'prompt-optimizer-db.json');
+const configDir = path.join(app.getPath('appData'), 'prompt-optimizer');
+if (!fs.existsSync(configDir)) {
+  fs.mkdirSync(configDir, { recursive: true });
+}
+const storePath = path.join(configDir, 'prompt-optimizer-db.json');
 
 // IPC Обробники для читання/запису
 ipcMain.on('get-data-sync', (event, key) => {
