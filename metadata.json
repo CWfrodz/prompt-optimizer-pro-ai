@@ -1,0 +1,8 @@
+{
+  "name": "Prompt Optimizer Pro",
+  "description": "Локальний додаток для оптимізації промптів та роботи з кастомними AI моделями.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
