@@ -4,56 +4,108 @@
 
 Ось покрокова інструкція, як це зробити на вашому ПК за 10 хвилин:
 
-## Крок 1. Завантажте цей проект
-1. В інтерфейсі AI Studio натисніть на меню проекту і виберіть **"Export as ZIP"** (Експортувати як ZIP).
-2. Розархівуйте ZIP-файл у зручну папку на вашому комп'ютері.
+## Що змінилося: Які файли копіювати?
+Щоб не завантажувати всі файли заново, перенесіть до вашого проекту на ПК **тільки ці 2 оновлені файли**:
+1. `app/page.tsx`
+2. `lib/storage.ts`
 
-## Крок 2. Встановіть середовище Node.js
-Якщо у вас ще не встановлено **Node.js**, завантажте та встановіть його з офіційного сайту: [https://nodejs.org/](https://nodejs.org/)
+*(Всі нові функції контексту та налаштувань знаходяться в них. Для глобального контексту я додав вкладку "Пам'ять / Контекст" в налаштуваннях — туди ви пишете хто ви, з чим працюєте та в якому стилі відповідати, і це буде застосовуватись до кожного промпту).*
 
-## Крок 3. Додайте Electron до проекту
-Відкрийте командний рядок (Terminal / PowerShell), перейдіть у папку з розархівованим проектом та виконайте:
+---
 
-```bash
-npm install
-npm install --save-dev electron electron-builder wait-on concurrently
-```
+## Важливо: Підготовка до компіляції (.exe)
 
-## Крок 4. Створіть файл запуску `main.js`
-Створіть в корені проекту новий файл з назвою `main.js` і вставте в нього цей код:
+Оскільки для `.exe` екрану ми використовуємо статичний файл, нам потрібно відключити серверні API Next.js, які не потрібні в локальному Electron-додатку (адже Electron і так не блокується CORS).
+
+1. **Видаліть папку** `app/api/` (повністю). Вона була потрібна лише для сайту.
+2. Відкрийте файл `next.config.ts` та змініть значення `output`:
+   Змініть `output: 'standalone'` на **`output: 'export'`**.
+3. Це дозволить команді `next build` згенерувати готову статичну папку `out/`, яку ми запакуємо в `.exe`.
+
+## Правильний `main.js` (Виправлено помилку "serve is not a function")
+Відредагуйте ваш `main.js`, щоб він виглядав **точно так**. Цей код має вбудований міні-сервер, щоб статика Next.js ідеально працювала в `.exe` без зовнішніх бібліотек.
 
 ```javascript
 const { app, BrowserWindow, Tray, Menu, globalShortcut } = require('electron');
 const path = require('path');
+const http = require('http');
+const fs = require('fs');
 
 let tray = null;
 let window = null;
 let isQuitting = false;
 
-function createWindow() {
+// Вбудований локальний сервер для Next.js статики (папка out) - працює в .exe
+function serveNextStatic() {
+  return new Promise((resolve) => {
+    const server = http.createServer((req, res) => {
+      let urlPath = req.url.split('?')[0];
+      let filePath = path.join(__dirname, 'out', urlPath === '/' ? 'index.html' : urlPath);
+      
+      if (!fs.existsSync(filePath)) {
+        filePath = path.join(__dirname, 'out', urlPath + '.html');
+      }
+      if (!fs.existsSync(filePath)) {
+        filePath = path.join(__dirname, 'out', 'index.html');
+      }
+      
+      const extname = path.extname(filePath);
+      let contentType = 'text/html';
+      if (extname === '.js') contentType = 'text/javascript';
+      else if (extname === '.css') contentType = 'text/css';
+      else if (extname === '.json') contentType = 'application/json';
+      
+      fs.readFile(filePath, (err, content) => {
+        if (!err) {
+          res.writeHead(200, { 'Content-Type': contentType });
+          res.end(content, 'utf-8');
+        } else {
+          res.writeHead(404);
+          res.end();
+        }
+      });
+    });
+    // Запускаємо на випадковому вільному порту
+    server.listen(0, '127.0.0.1', () => {
+      resolve(`http://127.0.0.1:${server.address().port}`);
+    });
+  });
+}
+
+async function createWindow() {
   window = new BrowserWindow({
     width: 450,
     height: 320, // Зменшена висота для компактності
-    show: false, // Не показувати відразу
-    frame: false, // Вікно без стандартних рамок 
-    resizable: true, // Дозволяємо зміну розміру якщо потрібно
+    show: false, 
+    frame: false, 
+    resizable: true, 
     alwaysOnTop: true, // Поверх інших вікон
     skipTaskbar: true, // Сховати з панелі задач (бо це трей-програма)
     webPreferences: {
       nodeIntegration: true,
+      contextIsolation: false,
+      webSecurity: false // ВАЖЛИВО! Відключає CORS для запитів до локальних LLM
     },
   });
 
-  // Завантажуємо локальний сервер Next.js
-  window.loadURL('http://localhost:3000');
-
-  // Замість того, щоб вбивати програму, перехоплюємо закриття і просто ховаємо її в трей
   window.on('close', (event) => {
     if (!isQuitting) {
       event.preventDefault(); // Зупиняємо закриття
       window.hide(); // Ховаємо вікно
     }
   });
+
+  // Перевіряємо чи додаток скомпільований чи ні
+  const isDev = !app.isPackaged;
+
+  if (isDev) {
+    // В режимі npm run electron:dev підключаємось до Next.js сервера (який на 3000 порту)
+    window.loadURL('http://localhost:3000');
+  } else {
+    // В скомпільованому .exe піднімаємо свій сервер і роздаємо папку out/
+    const localUrl = await serveNextStatic();
+    window.loadURL(localUrl);
+  }
 }
 
 const toggleWindow = () => {
@@ -71,7 +123,7 @@ const showWindow = () => {
   let x = Math.round(trayPos.x + (trayPos.width / 2) - (windowPos.width / 2));
   let y = Math.round(trayPos.y - windowPos.height - 10);
 
-  // Жорстко задаємо розмір, щоб вікно не зменшувалось самостійно при зміні позиції
+  // Жорстко задаємо розмір
   window.setBounds({ x: x, y: y, width: 450, height: 320 });
   window.show();
   window.focus();
@@ -115,40 +167,21 @@ app.on('window-all-closed', () => {
 });
 ```
 
-## Крок 5. Налаштуйте команди запуску (`package.json`)
-Відкрийте файл `package.json` і в секцію `"scripts"` додайте:
-
-```json
-  "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
-  "build:electron": "next build && electron-builder"
-```
-
-Також, в корінь об'єкта `package.json` (окремо від scripts) додайте поле `main` і `build`:
-```json
-  "main": "main.js",
-  "build": {
-    "appId": "com.prompt.optimizer",
-    "win": {
-      "target": "nsis"
-    }
-  }
-```
-
-## Крок 6. Запустіть або скомпілюйте!
-Щоб просто перевірити як воно працює в Electron (для дебагу), введіть у консолі:
-```bash
-npm run electron:dev
-```
-
-Щоб згенерувати повноцінний файл **.exe**, вимкніть сервер та запустіть команду:
+## Крок 4. Компіляція
+Після цього знову виконайте команду:
 ```bash
 npm run build:electron
 ```
-Після успішного виконання в директорії `dist/` на вашому ПК з'явиться готовий `.exe` інсталятор.
+
+Тепер `next build` створить надійну статичну копію в папці `out`, а Electron запакує її. Всередині `.exe` код підніме свій мікро-сервер і рендеритиме інтерфейс без жодних білих екранів чи помилок "serve is not a function".
 
 ---
 
-### Щодо збереження даних
-У Electron (на ПК) `LocalStorage` прив'язаний до вашої встановленої програми (до її внутрішнього профілю у `%APPDATA%`), він працює так само як в браузері, але надійно ізольований та не стирається при очищенні історії браузера. Це робить його цілком безпечним та надійним для такого невеликого локального додатку.
+### Щодо системи пам'яті
+Система пам'яті (яку я щойно додав) працює дуже просто:
+Усі значення з налаштувань зберігаються у файлі конфігурації у схованій папці користувача Windows (`%APPDATA%`).
+Вона **не пише туди все підряд**. У вкладці **"Пам'ять / Контекст"** (в налаштуваннях) ми зберігаємо лише той текст, який ви самі туди впишете. 
+Наприклад, ви можете вписати туди:
+> "Я досвідчений розробник на React. Пиши дуже коротко, тільки код, без пояснень."
 
-Якщо в майбутньому знадобиться обробляти гігабайти тексту або експортувати історію, ви можете замінити `LocalStorage` на бібліотеку `electron-store`, яка зберігатиме все у звичайному `config.json` файлі на ПК.
+Програма автоматично буде "підклеювати" цей контекст до системного промпту коли оптимізує ваші запити. Тобто модель завжди пам'ятатиме "хто ви і чого хочете".
