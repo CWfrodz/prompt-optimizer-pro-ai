@@ -50,18 +50,21 @@ export default function PromptOptimizerTrayApp() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    const m = getStoredModels();
-    const h = getStoredHistory();
-    const sid = getSelectedModelId();
-    const ctx = getUserContext();
-    setModels(m);
-    setHistory(h);
-    setUserContext(ctx);
-    if (sid && m.find((mod) => mod.id === sid)) {
-      setSelectedModelId(sid);
-    } else if (m.length > 0) {
-      setSelectedModelId(m[0].id);
-    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    Promise.resolve().then(() => {
+      const m = getStoredModels();
+      const h = getStoredHistory();
+      const sid = getSelectedModelId();
+      const ctx = getUserContext();
+      setModels(m);
+      setHistory(h);
+      setUserContext(ctx);
+      if (sid && m.find((mod) => mod.id === sid)) {
+        setSelectedModelId(sid);
+      } else if (m.length > 0) {
+        setSelectedModelId(m[0].id);
+      }
+    });
   }, []);
 
   // Auto-resize textarea
@@ -349,7 +352,7 @@ export default function PromptOptimizerTrayApp() {
                   onClick={() => setActiveSettingsTab("memory")}
                   className={`text-sm font-bold ${activeSettingsTab === "memory" ? "text-indigo-600 border-b-2 border-indigo-600 pb-1" : "text-slate-500 hover:text-slate-700 pb-1"}`}
                 >
-                  Пам'ять / Контекст
+                  Пам&apos;ять / Контекст
                 </button>
               </div>
               <button onClick={() => setIsSettingsOpen(false)} className="text-slate-400 hover:text-slate-600 mb-1">
@@ -429,14 +432,14 @@ export default function PromptOptimizerTrayApp() {
               ) : (
                 <div className="space-y-4">
                   <div className="bg-emerald-50 text-emerald-800 p-3 rounded-lg text-sm mb-4 border border-emerald-100">
-                    <strong>Глобальний Контекст:</strong> Тут ви можете вказати свою роль, інструменти, якими користуєтесь, або стиль (наприклад: "Пиши коротко, я розробник на React"). Цей контекст буде застосовуватись до <strong>кожного</strong> вашого промпта під час оптимізації.
+                    <strong>Глобальний Контекст:</strong> Тут ви можете вказати свою роль, інструменти, якими користуєтесь, або стиль (наприклад: &quot;Пиши коротко, я розробник на React&quot;). Цей контекст буде застосовуватись до <strong>кожного</strong> вашого промпта під час оптимізації.
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">Ваш персональний контекст</label>
                     <textarea
                       value={draftUserContext}
                       onChange={(e) => setDraftUserContext(e.target.value)}
-                      placeholder='Наприклад: "Я працюю з Node.js та TypeScript. Промпти потрібні для генерації коду. Пиши стисло і технічно, без "води"."'
+                      placeholder="Наприклад: &quot;Я працюю з Node.js та TypeScript. Промпти потрібні для генерації коду. Пиши стисло і технічно, без &quot;води&quot;.&quot;"
                       className="w-full h-40 px-3 py-3 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                   </div>

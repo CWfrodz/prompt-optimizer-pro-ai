@@ -37,9 +37,20 @@ function serveNextStatic() {
         }
       });
     });
-    // Запускаємо на випадковому вільному порту
-    server.listen(0, '127.0.0.1', () => {
-      resolve(`http://127.0.0.1:${server.address().port}`);
+    // ВАЖЛИВО: Використовуємо фіксований порт. 
+    // Якщо порт щоразу випадковий, LocalStorage буде порожнім при кожному запуску, оскільки він прив'язаний до порту.
+    let port = 37129;
+    server.on('error', (e) => {
+      if (e.code === 'EADDRINUSE') {
+        port++;
+        setTimeout(() => {
+          server.listen(port, '127.0.0.1');
+        }, 100);
+      }
+    });
+
+    server.listen(port, '127.0.0.1', () => {
+      resolve(`http://127.0.0.1:${port}`);
     });
   });
 }
